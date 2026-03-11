@@ -11,6 +11,7 @@ export const config = {
         timeoutMs: 20000,
         visitDelayMs: 1200,
         scrollDelayMs: 250,
+        minOverflowPx: 140,
     },
 
     login: {

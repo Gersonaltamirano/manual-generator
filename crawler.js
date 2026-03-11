@@ -147,6 +147,7 @@ async function discoverLinks(page, appBase){
 async function captureInParts(page, baseFileName){
   const viewportSize = page.viewportSize() || { width: 1920, height: 1080 }
   const viewportHeight = viewportSize.height || 1080
+  const minOverflowPx = config.crawl.minOverflowPx || 0
 
   const totalHeight = await page.evaluate(() => {
     return Math.max(
@@ -157,11 +158,24 @@ async function captureInParts(page, baseFileName){
     )
   })
 
-  const parts = Math.max(1, Math.ceil(totalHeight / viewportHeight))
+  const maxScrollY = Math.max(0, totalHeight - viewportHeight)
+  const positions = [0]
+
+  if(maxScrollY > minOverflowPx){
+    for(let y = viewportHeight; y < maxScrollY; y += viewportHeight){
+      positions.push(y)
+    }
+
+    const lastPosition = positions[positions.length - 1]
+    if((maxScrollY - lastPosition) > minOverflowPx){
+      positions.push(maxScrollY)
+    }
+  }
+
   const images = []
 
-  for(let i = 0; i < parts; i++){
-    const scrollY = i * viewportHeight
+  for(let i = 0; i < positions.length; i++){
+    const scrollY = positions[i]
     await page.evaluate((y) => window.scrollTo(0, y), scrollY)
     await page.waitForTimeout(config.crawl.scrollDelayMs)
 
