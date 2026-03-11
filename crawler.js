@@ -1,5 +1,4 @@
 import { chromium } from "playwright"
-import fs from "fs-extra"
 import { config } from "./config.js"
 
 function isDynamicSegment(segment){
@@ -123,6 +122,20 @@ function getRouteFileName(url, appBase){
     .replace(/\?/g, "")
 
   return clean || "home"
+}
+
+function getSectionFromUrl(url, appBase){
+  const parsed = new URL(url)
+  const basePath = appBase.pathname.replace(/\/+$/, "") || "/"
+
+  let relativePath = parsed.pathname
+
+  if(basePath !== "/" && relativePath.startsWith(basePath)){
+    relativePath = relativePath.slice(basePath.length) || "/"
+  }
+
+  const segments = relativePath.split("/").filter(Boolean)
+  return segments[0] || "general"
 }
 
 async function discoverLinks(page, appBase){
@@ -277,10 +290,21 @@ export async function crawlRoutes(){
       await page.waitForTimeout(config.crawl.visitDelayMs)
 
       const baseFileName = getRouteFileName(url, appBase)
+      const meta = await page.evaluate(() => {
+        const h1 = document.querySelector("h1")
+        const h2 = document.querySelector("h2")
+        return {
+          title: document.title || "",
+          heading: (h1?.textContent || h2?.textContent || "").trim(),
+        }
+      })
       const images = await captureInParts(page, baseFileName)
 
       pages.push({
         url,
+        section: getSectionFromUrl(url, appBase),
+        title: meta.title,
+        heading: meta.heading,
         images,
       })
 

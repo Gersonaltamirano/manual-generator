@@ -33,11 +33,13 @@ Este documento describe las funcionalidades principales del sistema.
     ? p.images
     : (p.image ? [p.image] : [])
 
+   const description = (p.description || "Acceso a esta seccion del sistema.").trim()
+
    md+=`
 
 ## ${p.url}
 
-Acceso a esta seccion del sistema.
+${description}
 
 `
 

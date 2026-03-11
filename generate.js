@@ -1,5 +1,6 @@
 import fs from "fs-extra"
 import { crawlRoutes } from "./crawler.js"
+import { enrichPagesWithAI } from "./ai.js"
 import { generateMarkdown } from "./markdown.js"
 import { generatePDF } from "./pdf.js"
 import { generateWord } from "./word.js"
@@ -17,9 +18,13 @@ async function run(){
 
  console.log("Encontradas:", pages.length)
 
+ console.log("Generando descripciones con IA (si hay API key)...")
+
+ const pagesWithDescriptions = await enrichPagesWithAI(pages)
+
  console.log("Generando manual...")
 
- generateMarkdown(pages)
+ generateMarkdown(pagesWithDescriptions)
 
  console.log("Generando PDF...")
 
@@ -27,7 +32,7 @@ async function run(){
 
  console.log("Generando WORD...")
 
- await generateWord(pages)
+ await generateWord(pagesWithDescriptions)
 
  console.log("Manual generado")
 

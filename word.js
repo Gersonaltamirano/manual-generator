@@ -99,21 +99,23 @@ export async function generateWord(pages){
     ? p.images
     : (p.image ? [p.image] : [])
 
-   children.push(
-    new Paragraph({
-     text: p.url,
-     heading: HeadingLevel.HEADING_2,
-    })
-   )
+   const description = (p.description || "Acceso a esta seccion del sistema.").trim()
 
    children.push(
     new Paragraph({
-     text: "Acceso a esta seccion del sistema.",
-     spacing: {
-      after: 180,
-     },
+      text: p.url,
+      heading: HeadingLevel.HEADING_2,
     })
    )
+
+    children.push(
+     new Paragraph({
+      text: description,
+      spacing: {
+       after: 180,
+      },
+     })
+    )
 
    for(const imagePath of images){
     const absoluteImagePath = path.resolve(imagePath)
