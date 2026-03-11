@@ -75,7 +75,7 @@ function buildPrompt(pages){
     "No inventes funciones no evidentes en la URL/titulo.",
     "Respuesta SOLO en JSON valido (sin markdown):",
     '[{"url":"...","description":"..."}]',
-    "La descripcion debe tener entre 1 y 2 oraciones y maximo 220 caracteres.",
+    "La descripcion debe tener entre 2 y 3 oraciones y maximo 500 caracteres.",
     "Si la URL no da suficiente contexto, describe de forma neutral y util.",
     `Items: ${JSON.stringify(input)}`,
   ].join("\n")

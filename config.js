@@ -1,9 +1,21 @@
+import "dotenv/config"
+
+function firstEnv(...keys) {
+    for (const key of keys) {
+        const value = process.env[key]
+        if (typeof value === "string" && value.trim() !== "") {
+            return value
+        }
+    }
+    return ""
+}
+
 export const config = {
 
-    baseURL: "https://lrv-12.local",
+    baseURL: process.env.BASE_URL || "localhost:8000",
     ai: {
         enabled: true,
-        provider: "deepseek", // deepseek | openai | gemini
+        provider: process.env.PROVIDER || "deepseek", // deepseek | openai | gemini
         timeoutMs: 45000,
         chunkSize: 20,
         temperature: 1.3,
@@ -21,7 +33,7 @@ export const config = {
             gemini: {
                 apiKey: process.env.GEMINI_API_KEY || "",
                 model: "gemini-3.1-pro-preview",
-                baseURL: "https://generativelanguage.googleapis.com",
+                baseURL: "https://generativelanguage.googleapis.com/v1beta",
             },
         },
     },
@@ -39,15 +51,15 @@ export const config = {
     },
 
     login: {
-        url: "/login",
-        email: "superadmin@solucionesaltamirano.com",
-        password: "SuperAdmin123.",
+        url: firstEnv("URL_LOGIN") || "/login",
+        email: firstEnv("LOGIN_EMAIL", "EMAIL", "USERNAME"),
+        password: firstEnv("LOGIN_PASSWORD", "PASSWORD"),
 
-        emailSelector: "#email",
-        passwordSelector: "#password",
-        submitSelector: "#loginForm button.btn-primary",
+        emailSelector: firstEnv("EMAIL_SELECTOR") || "#email",
+        passwordSelector: firstEnv("PASSWORD_SELECTOR") || "#password",
+        submitSelector: firstEnv("SUBMIT_SELECTOR") || "#loginForm button.btn-primary",
 
-        successUrl: "/dashboard" // cambiar si tu dashboard es otro
+        successUrl: firstEnv("SUCCESS_URL") || "/dashboard" // cambiar si tu dashboard es otro
     },
 
     ignoreRoutes: [
