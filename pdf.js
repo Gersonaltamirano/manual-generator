@@ -4,9 +4,11 @@ import path from "path"
 import { marked } from "marked"
 import { pathToFileURL } from "url"
 
-export async function generatePDF(){
+export async function generatePDF(options = {}){
 
- const markdownPath = path.resolve("docs/manual_usuario.md")
+ const markdownPath = options.markdownPath
+  ? path.resolve(options.markdownPath)
+  : path.resolve("docs/manual_usuario.md")
  const md = fs.readFileSync(markdownPath,"utf8")
 
  // convertir markdown a HTML
@@ -43,8 +45,12 @@ export async function generatePDF(){
  const docsDir = path.dirname(markdownPath)
  const tempHtmlPath = path.join(docsDir, "__manual_preview__.html")
  fs.writeFileSync(tempHtmlPath, html, "utf8")
- const outputPath = path.join(docsDir, "manual_usuario.pdf")
- const fallbackOutputPath = path.join(docsDir, "manual_usuario.new.pdf")
+ const outputPath = options.outputPath
+  ? path.resolve(options.outputPath)
+  : path.join(docsDir, "manual_usuario.pdf")
+ const fallbackOutputPath = options.fallbackOutputPath
+  ? path.resolve(options.fallbackOutputPath)
+  : path.join(docsDir, "manual_usuario.new.pdf")
 
  let browser
 

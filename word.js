@@ -64,7 +64,7 @@ function buildImageParagraph(imagePath){
  })
 }
 
-export async function generateWord(pages){
+export async function generateWord(pages, options = {}){
  const modules = groupPagesByModule(pages)
  const children = []
 
@@ -138,13 +138,17 @@ export async function generateWord(pages){
  })
 
  const buffer = await Packer.toBuffer(doc)
- const outputPath = path.resolve("docs/manual_usuario.docx")
+ const outputPath = options.outputPath
+  ? path.resolve(options.outputPath)
+  : path.resolve("docs/manual_usuario.docx")
+ const fallbackOutputPath = options.fallbackOutputPath
+  ? path.resolve(options.fallbackOutputPath)
+  : path.resolve("docs/manual_usuario.new.docx")
 
  try{
   fs.writeFileSync(outputPath, buffer)
  }catch(error){
   if(error && error.code === "EBUSY"){
-   const fallbackOutputPath = path.resolve("docs/manual_usuario.new.docx")
    fs.writeFileSync(fallbackOutputPath, buffer)
    console.log(`WORD bloqueado, se guardo en: ${fallbackOutputPath}`)
   }else{

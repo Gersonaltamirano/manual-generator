@@ -1,6 +1,6 @@
 import fs from "fs-extra"
 
-export function generateMarkdown(pages){
+export function generateMarkdown(pages, outputPath = "docs/manual_usuario.md"){
 
  let md=`# Manual de Usuario del Sistema
 
@@ -52,6 +52,6 @@ ${description}
 
  }
 
- fs.writeFileSync("docs/manual_usuario.md",md)
+ fs.writeFileSync(outputPath,md)
 
 }
