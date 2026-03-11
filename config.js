@@ -9,7 +9,7 @@ export const config = {
         temperature: 1.3,
         providers: {
             deepseek: {
-                apiKey: process.env.DEEPSEEK_API_KEY || "sk-fa011f7bebbc4111a9626adc1d0b0cad",
+                apiKey: process.env.DEEPSEEK_API_KEY || "",
                 model: "deepseek-chat",
                 baseURL: "https://api.deepseek.com",
             },
@@ -19,9 +19,9 @@ export const config = {
                 baseURL: "https://api.openai.com/v1",
             },
             gemini: {
-                apiKey: process.env.GEMINI_API_KEY || "AIzaSyDoVFUgfp3WzunRIk4YWD-xG78JGYUt0h8",
+                apiKey: process.env.GEMINI_API_KEY || "",
                 model: "gemini-3.1-pro-preview",
-                baseURL: "https://generativelanguage.googleapis.com/v1beta",
+                baseURL: "https://generativelanguage.googleapis.com",
             },
         },
     },
