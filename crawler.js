@@ -222,6 +222,25 @@ export async function crawlRoutes(){
 
   const page = await context.newPage()
 
+  if(config.crawl.blockRealtimeRequests){
+    const blockedPatterns = Array.isArray(config.crawl.blockedUrlPatterns)
+      ? config.crawl.blockedUrlPatterns
+      : []
+
+    if(blockedPatterns.length > 0){
+      await page.route("**/*", (route) => {
+        const requestUrl = route.request().url()
+        const shouldBlock = blockedPatterns.some((pattern) => requestUrl.includes(pattern))
+
+        if(shouldBlock){
+          return route.abort()
+        }
+
+        return route.continue()
+      })
+    }
+  }
+
   console.log("Abriendo login...")
 
   await page.goto(config.baseURL + config.login.url, { waitUntil: "domcontentloaded" })

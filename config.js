@@ -48,6 +48,10 @@ export const config = {
         visitDelayMs: 1200,
         scrollDelayMs: 250,
         minOverflowPx: 140,
+        blockRealtimeRequests: true,
+        blockedUrlPatterns: [
+            "/app/",
+        ],
     },
 
     login: {
