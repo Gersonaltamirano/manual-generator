@@ -312,9 +312,92 @@ export async function crawlRoutes(){
       const meta = await page.evaluate(() => {
         const h1 = document.querySelector("h1")
         const h2 = document.querySelector("h2")
+
+        const ignoredFieldPatterns = [
+          "_token",
+          "buscar en el menu",
+          "search [ctrl + k]",
+        ]
+        const ignoredActionPatterns = [
+          "toggle theme",
+          "light",
+          "dark",
+          "system",
+          "search [ctrl + k]",
+          "ver todas las notificaciones",
+          "salir",
+        ]
+
+        const labelMap = new Map()
+        Array.from(document.querySelectorAll("label[for]")).forEach((label) => {
+          const forId = label.getAttribute("for")
+          const text = (label.textContent || "").trim()
+          if(forId && text){
+            labelMap.set(forId, text)
+          }
+        })
+
+        const forms = Array.from(document.querySelectorAll("form"))
+        const bestForm = forms
+          .map((form) => ({
+            form,
+            controls: form.querySelectorAll("input, select, textarea").length,
+          }))
+          .sort((a, b) => b.controls - a.controls)[0]?.form
+
+        const root = bestForm || document.querySelector("main") || document.body
+
+        const fields = Array.from(root.querySelectorAll("input, select, textarea"))
+          .map((field) => {
+            const id = field.getAttribute("id") || ""
+            const name = field.getAttribute("name") || ""
+            const placeholder = field.getAttribute("placeholder") || ""
+            const type = field.getAttribute("type") || field.tagName.toLowerCase()
+            const label = (id && labelMap.get(id)) || ""
+
+            if(type.toLowerCase() === "hidden"){
+              return null
+            }
+
+            const value = (label || placeholder || name || "").trim()
+            if(!value){
+              return null
+            }
+
+            const normalized = value.toLowerCase()
+            const shouldIgnore = ignoredFieldPatterns.some((pattern) => normalized.includes(pattern))
+            if(shouldIgnore){
+              return null
+            }
+
+            return {
+              name: value,
+              type,
+            }
+          })
+          .filter(Boolean)
+          .slice(0, 12)
+
+        const actions = Array.from(root.querySelectorAll("button, input[type='submit'], a.btn"))
+          .map((el) => {
+            if(el.tagName.toLowerCase() === "input"){
+              return (el.getAttribute("value") || "").trim()
+            }
+            return (el.textContent || "").trim()
+          })
+          .filter((text) => text.length > 1)
+          .filter((text) => {
+            const normalized = text.toLowerCase()
+            return !ignoredActionPatterns.some((pattern) => normalized.includes(pattern))
+          })
+          .filter((text, index, arr) => arr.indexOf(text) === index)
+          .slice(0, 10)
+
         return {
           title: document.title || "",
           heading: (h1?.textContent || h2?.textContent || "").trim(),
+          fields,
+          actions,
         }
       })
       const images = await captureInParts(page, baseFileName)
@@ -324,6 +407,8 @@ export async function crawlRoutes(){
         section: getSectionFromUrl(url, appBase),
         title: meta.title,
         heading: meta.heading,
+        fields: meta.fields,
+        actions: meta.actions,
         images,
       })
 

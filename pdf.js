@@ -17,6 +17,7 @@ export async function generatePDF(options = {}){
  const html = `
  <html>
  <head>
+ <meta charset="utf-8" />
  <style>
   body{
    font-family: Arial;

@@ -1,3 +1,5 @@
+import fs from "fs"
+import path from "path"
 import { config } from "./config.js"
 
 function chunkArray(items, size){
@@ -39,6 +41,24 @@ function safeJsonParse(text){
   }
 }
 
+function normalizeParsedItems(parsed){
+  if(Array.isArray(parsed)){
+    return parsed
+  }
+
+  if(parsed && typeof parsed === "object"){
+    if(Array.isArray(parsed.items)){
+      return parsed.items
+    }
+
+    if(Array.isArray(parsed.results)){
+      return parsed.results
+    }
+  }
+
+  return null
+}
+
 function providerOrder(configuredProvider){
   const all = [configuredProvider, "deepseek", "openai", "gemini"]
   const unique = []
@@ -62,6 +82,14 @@ function getEnabledProviders(){
   })
 }
 
+function mimeFromPath(filePath){
+  const ext = path.extname(filePath).toLowerCase()
+  if(ext === ".png") return "image/png"
+  if(ext === ".jpg" || ext === ".jpeg") return "image/jpeg"
+  if(ext === ".webp") return "image/webp"
+  return "application/octet-stream"
+}
+
 function buildPrompt(pages){
   const input = pages.map((page) => ({
     url: page.url,
@@ -75,24 +103,101 @@ function buildPrompt(pages){
         return ""
       }
     })(),
+    fields: (page.fields || []).map((field) => field.name).slice(0, 8),
+    actions: (page.actions || []).slice(0, 8),
   }))
 
   return [
     "Eres un redactor tecnico para manuales de usuario final en espanol.",
     "Para cada item devuelve una explicacion clara, natural y util para una persona no tecnica.",
-    "No inventes funciones no evidentes en la URL, titulo o heading.",
+    "No inventes funciones no evidentes en la URL, titulo, heading, campos o acciones.",
     "Cada descripcion debe incluir objetivo de la pantalla, acciones del usuario, datos que suele llenar o consultar y resultado esperado.",
     "Respuesta SOLO en JSON valido (sin markdown):",
     '[{"url":"...","description":"..."}]',
     "La descripcion debe tener entre 3 y 5 oraciones y entre 350 y 900 caracteres.",
+    "Si hay imagenes adjuntas, usalas para mejorar precision del lenguaje funcional.",
     "Si la URL no da suficiente contexto, describe de forma neutral y util.",
     `Items: ${JSON.stringify(input)}`,
   ].join("\n")
 }
 
-async function callOpenAICompatible({ baseURL, apiKey, model, prompt, temperature, timeoutMs }){
+function collectVisionAssets(chunk){
+  const visionConfig = config.ai?.vision || {}
+
+  if(!visionConfig.enabled){
+    return []
+  }
+
+  const maxImages = Math.max(0, Number(visionConfig.maxImagesPerChunk || 0))
+  const maxBytes = Math.max(1, Number(visionConfig.maxImageBytes || 350000))
+
+  if(maxImages === 0){
+    return []
+  }
+
+  const assets = []
+
+  for(const page of chunk){
+    if(assets.length >= maxImages){
+      break
+    }
+
+    const images = Array.isArray(page.images) ? page.images : []
+    const firstImage = images[0]
+
+    if(!firstImage){
+      continue
+    }
+
+    const absPath = path.resolve(firstImage)
+
+    if(!fs.existsSync(absPath)){
+      continue
+    }
+
+    const stat = fs.statSync(absPath)
+    if(stat.size > maxBytes){
+      continue
+    }
+
+    const buffer = fs.readFileSync(absPath)
+    const mimeType = mimeFromPath(absPath)
+
+    assets.push({
+      pageUrl: page.url,
+      mimeType,
+      dataUrl: `data:${mimeType};base64,${buffer.toString("base64")}`,
+      bytes: stat.size,
+    })
+  }
+
+  return assets
+}
+
+async function callOpenAICompatible({ baseURL, apiKey, model, prompt, temperature, timeoutMs, visionAssets }){
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
+
+  const hasVision = Array.isArray(visionAssets) && visionAssets.length > 0
+
+  const mappedVisionText = hasVision
+    ? [
+        "Imagenes adjuntas (una por URL):",
+        ...visionAssets.map((asset, index) => `${index + 1}. ${asset.pageUrl}`),
+      ].join("\n")
+    : ""
+
+  const userContent = hasVision
+    ? [
+        { type: "text", text: `${prompt}\n\n${mappedVisionText}` },
+        ...visionAssets.map((asset) => ({
+          type: "image_url",
+          image_url: {
+            url: asset.dataUrl,
+          },
+        })),
+      ]
+    : prompt
 
   try{
     const response = await fetch(`${baseURL}/chat/completions`, {
@@ -111,7 +216,7 @@ async function callOpenAICompatible({ baseURL, apiKey, model, prompt, temperatur
           },
           {
             role: "user",
-            content: prompt,
+            content: userContent,
           },
         ],
       }),
@@ -130,9 +235,29 @@ async function callOpenAICompatible({ baseURL, apiKey, model, prompt, temperatur
   }
 }
 
-async function callGemini({ baseURL, apiKey, model, prompt, temperature, timeoutMs }){
+async function callGemini({ baseURL, apiKey, model, prompt, temperature, timeoutMs, visionAssets }){
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
+
+  const parts = [{ text: prompt }]
+
+  if(Array.isArray(visionAssets) && visionAssets.length > 0){
+    parts.push({
+      text: [
+        "Imagenes adjuntas (una por URL):",
+        ...visionAssets.map((asset, index) => `${index + 1}. ${asset.pageUrl}`),
+      ].join("\n"),
+    })
+
+    for(const asset of visionAssets){
+      parts.push({
+        inlineData: {
+          mimeType: asset.mimeType,
+          data: asset.dataUrl.split(",")[1],
+        },
+      })
+    }
+  }
 
   try{
     const endpoint = `${baseURL}/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`
@@ -149,7 +274,7 @@ async function callGemini({ baseURL, apiKey, model, prompt, temperature, timeout
         contents: [
           {
             role: "user",
-            parts: [{ text: prompt }],
+            parts,
           },
         ],
       }),
@@ -168,32 +293,55 @@ async function callGemini({ baseURL, apiKey, model, prompt, temperature, timeout
   }
 }
 
-async function callProvider(provider, prompt){
+async function callProvider(provider, prompt, visionAssets){
   const providerConfig = config.ai.providers[provider]
 
   if(!providerConfig?.apiKey){
     throw new Error(`No API key for provider ${provider}`)
   }
 
-  if(provider === "gemini"){
-    return callGemini({
+  const visionEnabledForProvider = Boolean(
+    config.ai?.vision?.enabled && config.ai?.vision?.providers?.[provider]
+  )
+
+  const providerVisionAssets = visionEnabledForProvider ? visionAssets : []
+
+  const runCall = async (assets) => {
+    if(provider === "gemini"){
+      return callGemini({
+        baseURL: providerConfig.baseURL,
+        apiKey: providerConfig.apiKey,
+        model: providerConfig.model,
+        prompt,
+        temperature: config.ai.temperature,
+        timeoutMs: config.ai.timeoutMs,
+        visionAssets: assets,
+      })
+    }
+
+    return callOpenAICompatible({
       baseURL: providerConfig.baseURL,
       apiKey: providerConfig.apiKey,
       model: providerConfig.model,
       prompt,
       temperature: config.ai.temperature,
       timeoutMs: config.ai.timeoutMs,
+      visionAssets: assets,
     })
   }
 
-  return callOpenAICompatible({
-    baseURL: providerConfig.baseURL,
-    apiKey: providerConfig.apiKey,
-    model: providerConfig.model,
-    prompt,
-    temperature: config.ai.temperature,
-    timeoutMs: config.ai.timeoutMs,
-  })
+  const hasVisionAttempt = providerVisionAssets.length > 0
+
+  if(!hasVisionAttempt){
+    return runCall([])
+  }
+
+  try{
+    return await runCall(providerVisionAssets)
+  }catch(error){
+    console.log(`IA ${provider}: fallo en modo vision, reintentando en texto (${error.message})`)
+    return runCall([])
+  }
 }
 
 function buildDescriptionMap(items, chunk){
@@ -215,9 +363,10 @@ function buildDescriptionMap(items, chunk){
   const fallback = new Map()
   for(const page of chunk){
     const section = page.section || "modulo"
+
     fallback.set(
       page.url,
-      `Esta pantalla corresponde al modulo ${section}. Desde aqui el usuario puede consultar informacion y ejecutar acciones segun sus permisos. Normalmente permite revisar datos existentes, completar formularios cuando aplica y confirmar cambios para que el sistema actualice el proceso relacionado.`
+      `Esta pantalla corresponde al modulo ${section}. Desde aqui el usuario puede consultar informacion y ejecutar acciones segun sus permisos. El resultado esperado es mantener el proceso actualizado con datos correctos.`
     )
   }
 
@@ -244,14 +393,20 @@ export async function enrichPagesWithAI(pages){
   for(let index = 0; index < chunks.length; index++){
     const chunk = chunks[index]
     const prompt = buildPrompt(chunk)
+    const visionAssets = collectVisionAssets(chunk)
     let parsed = null
+
+    if(visionAssets.length > 0){
+      const totalKb = Math.round(visionAssets.reduce((acc, item) => acc + item.bytes, 0) / 1024)
+      console.log(`IA chunk ${index + 1}/${chunks.length} con ${visionAssets.length} imagen(es), ${totalKb}KB`)
+    }
 
     for(const provider of providers){
       try{
-        const raw = await callProvider(provider, prompt)
-        parsed = safeJsonParse(raw)
+        const raw = await callProvider(provider, prompt, visionAssets)
+        parsed = normalizeParsedItems(safeJsonParse(raw))
 
-        if(Array.isArray(parsed)){
+        if(parsed){
           console.log(`IA chunk ${index + 1}/${chunks.length} generado con ${provider}`)
           break
         }
@@ -260,7 +415,7 @@ export async function enrichPagesWithAI(pages){
       }
     }
 
-    if(!Array.isArray(parsed)){
+    if(!parsed){
       parsed = []
     }
 

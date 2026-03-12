@@ -1,7 +1,23 @@
 import fs from "fs"
 import path from "path"
-import { Document, HeadingLevel, ImageRun, Packer, Paragraph, TextRun } from "docx"
-import { getPageHierarchy, sortPagesByUrl } from "./doc-structure.js"
+import { config } from "./config.js"
+import {
+  Document,
+  HeadingLevel,
+  ImageRun,
+  Packer,
+  Paragraph,
+  TableOfContents,
+  TextRun,
+} from "docx"
+import {
+  buildGlossary,
+  buildModuleSummaries,
+  buildRoleChecklist,
+  buildSuggestedSteps,
+  getPageHierarchy,
+  sortPagesByUrl,
+} from "./doc-structure.js"
 
 function getPngDimensions(filePath){
  const buffer = fs.readFileSync(filePath)
@@ -48,8 +64,21 @@ function buildImageParagraph(imagePath){
  })
 }
 
+function bullet(text){
+ return new Paragraph({
+  text,
+  bullet: {
+   level: 0,
+  },
+ })
+}
+
 export async function generateWord(pages, options = {}){
  const children = []
+ const sortedPages = sortPagesByUrl(pages)
+ const moduleSummaries = buildModuleSummaries(sortedPages)
+ const roleChecklist = buildRoleChecklist(sortedPages)
+ const glossary = buildGlossary(sortedPages)
 
  children.push(
   new Paragraph({
@@ -61,19 +90,67 @@ export async function generateWord(pages, options = {}){
  children.push(
   new Paragraph({
    children: [
-    new TextRun("Este documento describe las funcionalidades principales del sistema."),
+    new TextRun("Este documento describe las funcionalidades principales del sistema y la forma recomendada de uso para usuarios finales."),
    ],
    spacing: {
-    after: 300,
+    after: 240,
    },
+  })
+ )
+
+ children.push(
+  new Paragraph({
+   text: "Tabla de Contenido",
+   heading: HeadingLevel.HEADING_1,
+  })
+ )
+
+ children.push(
+  new Paragraph({
+   children: [
+    new TableOfContents("Contenido", {
+     hyperlink: true,
+     headingStyleRange: "1-3",
+    }),
+   ],
+  })
+ )
+
+ children.push(
+  new Paragraph({
+   text: "Resumen por Modulo",
+   heading: HeadingLevel.HEADING_1,
+  })
+ )
+
+ for(const summary of moduleSummaries){
+  children.push(
+   bullet(`${summary.module}: ${summary.pages} pantallas (crear: ${summary.create}, editar: ${summary.edit}, detalle: ${summary.detail}, consulta/listado: ${summary.list})`)
+  )
+ }
+
+ children.push(
+  new Paragraph({
+   text: "Checklist por Rol",
+   heading: HeadingLevel.HEADING_1,
+  })
+ )
+
+ children.push(bullet(`Usuario evaluado: ${roleChecklist.loginEmail || "no definido"}`))
+ children.push(bullet(`Rol declarado: ${roleChecklist.roleName || "no definido"}`))
+ children.push(bullet(`Total de pantallas documentadas: ${roleChecklist.totalPages}`))
+ children.push(bullet(`Modulos con acceso: ${roleChecklist.modules.join(", ") || "N/A"}`))
+
+ children.push(
+  new Paragraph({
+   text: "Detalle de Pantallas",
+   heading: HeadingLevel.HEADING_1,
   })
  )
 
  let currentLevel1 = ""
  let currentLevel2 = ""
  let currentLevel3 = ""
-
- const sortedPages = sortPagesByUrl(pages)
 
  for(const p of sortedPages){
   const hierarchy = getPageHierarchy(p.url)
@@ -117,11 +194,9 @@ export async function generateWord(pages, options = {}){
 
   children.push(
    new Paragraph({
-    children: [
-     new TextRun({ text: `URL de referencia: ${p.url}` }),
-    ],
+    text: `URL de referencia: ${p.url}`,
     spacing: {
-     after: 120,
+     after: 100,
     },
    })
   )
@@ -130,7 +205,7 @@ export async function generateWord(pages, options = {}){
    new Paragraph({
     text: description,
     spacing: {
-     after: 180,
+     after: 160,
     },
    })
   )
@@ -146,6 +221,26 @@ export async function generateWord(pages, options = {}){
    )
   }
 
+  if(config.manual?.includeUiExtractedDetails){
+    const fieldNames = (p.fields || []).map((field) => field.name).slice(0, 8)
+    if(fieldNames.length > 0){
+      children.push(new Paragraph({ text: `Campos principales: ${fieldNames.join(", ")}` }))
+    }
+
+    const actions = (p.actions || []).slice(0, 8)
+    if(actions.length > 0){
+      children.push(new Paragraph({ text: `Acciones disponibles: ${actions.join(", ")}` }))
+    }
+  }
+
+  const steps = buildSuggestedSteps(p)
+  if(steps.length > 0){
+    children.push(new Paragraph({ text: "Flujo sugerido:" }))
+    for(const step of steps){
+      children.push(bullet(step))
+    }
+  }
+
   for(const imagePath of images){
    const absoluteImagePath = path.resolve(imagePath)
 
@@ -155,6 +250,17 @@ export async function generateWord(pages, options = {}){
 
    children.push(buildImageParagraph(absoluteImagePath))
   }
+ }
+
+ children.push(
+  new Paragraph({
+   text: "Glosario",
+   heading: HeadingLevel.HEADING_1,
+  })
+ )
+
+ for(const item of glossary){
+  children.push(bullet(`${item.term}: ${item.definition}`))
  }
 
  const doc = new Document({

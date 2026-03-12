@@ -17,8 +17,18 @@ export const config = {
         enabled: true,
         provider: process.env.PROVIDER || "deepseek", // deepseek | openai | gemini
         timeoutMs: 45000,
-        chunkSize: 20,
-        temperature: 1.3,
+        chunkSize: 8,
+        temperature: 1,
+        vision: {
+            enabled: false,
+            maxImagesPerChunk: 6,
+            maxImageBytes: 350000,
+            providers: {
+                deepseek: true,
+                openai: false,
+                gemini: false,
+            },
+        },
         providers: {
             deepseek: {
                 apiKey: process.env.DEEPSEEK_API_KEY || "",
@@ -33,9 +43,13 @@ export const config = {
             gemini: {
                 apiKey: process.env.GEMINI_API_KEY || "",
                 model: "gemini-3.1-pro-preview",
-                baseURL: "https://generativelanguage.googleapis.com/v1beta",
+                baseURL: "https://generativelanguage.googleapis.com",
             },
         },
+    },
+    manual: {
+        roleName: firstEnv("ROLE_NAME"),
+        includeUiExtractedDetails: false,
     },
     viewport: {
         width: 1540,
