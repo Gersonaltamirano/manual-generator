@@ -1,23 +1,7 @@
 import fs from "fs"
 import path from "path"
 import { Document, HeadingLevel, ImageRun, Packer, Paragraph, TextRun } from "docx"
-
-function groupPagesByModule(pages){
- const modules = {}
-
- for(const p of pages){
-  const parts = p.url.split("/")
-  const moduleName = parts[3] || "general"
-
-  if(!modules[moduleName]){
-   modules[moduleName] = []
-  }
-
-  modules[moduleName].push(p)
- }
-
- return modules
-}
+import { getPageHierarchy, sortPagesByUrl } from "./doc-structure.js"
 
 function getPngDimensions(filePath){
  const buffer = fs.readFileSync(filePath)
@@ -65,7 +49,6 @@ function buildImageParagraph(imagePath){
 }
 
 export async function generateWord(pages, options = {}){
- const modules = groupPagesByModule(pages)
  const children = []
 
  children.push(
@@ -86,46 +69,91 @@ export async function generateWord(pages, options = {}){
   })
  )
 
- for(const moduleName of Object.keys(modules)){
+ let currentLevel1 = ""
+ let currentLevel2 = ""
+ let currentLevel3 = ""
+
+ const sortedPages = sortPagesByUrl(pages)
+
+ for(const p of sortedPages){
+  const hierarchy = getPageHierarchy(p.url)
+  const images = Array.isArray(p.images)
+   ? p.images
+   : (p.image ? [p.image] : [])
+  const description = (p.description || "Acceso a esta seccion del sistema.").trim()
+
+  if(hierarchy.level1 !== currentLevel1){
+   children.push(
+    new Paragraph({
+     text: hierarchy.level1,
+     heading: HeadingLevel.HEADING_1,
+    })
+   )
+   currentLevel1 = hierarchy.level1
+   currentLevel2 = ""
+   currentLevel3 = ""
+  }
+
+  if(hierarchy.level2 !== currentLevel2){
+   children.push(
+    new Paragraph({
+     text: hierarchy.level2,
+     heading: HeadingLevel.HEADING_2,
+    })
+   )
+   currentLevel2 = hierarchy.level2
+   currentLevel3 = ""
+  }
+
+  if(hierarchy.level3 !== currentLevel3){
+   children.push(
+    new Paragraph({
+     text: hierarchy.level3,
+     heading: HeadingLevel.HEADING_3,
+    })
+   )
+   currentLevel3 = hierarchy.level3
+  }
+
   children.push(
    new Paragraph({
-    text: moduleName.toUpperCase(),
-    heading: HeadingLevel.HEADING_1,
+    children: [
+     new TextRun({ text: `URL de referencia: ${p.url}` }),
+    ],
+    spacing: {
+     after: 120,
+    },
    })
   )
 
-  for(const p of modules[moduleName]){
-   const images = Array.isArray(p.images)
-    ? p.images
-    : (p.image ? [p.image] : [])
+  children.push(
+   new Paragraph({
+    text: description,
+    spacing: {
+     after: 180,
+    },
+   })
+  )
 
-   const description = (p.description || "Acceso a esta seccion del sistema.").trim()
-
+  if(hierarchy.extraPath){
    children.push(
     new Paragraph({
-      text: p.url,
-      heading: HeadingLevel.HEADING_2,
+     text: `Ruta adicional: ${hierarchy.extraPath}`,
+     spacing: {
+      after: 120,
+     },
     })
    )
+  }
 
-    children.push(
-     new Paragraph({
-      text: description,
-      spacing: {
-       after: 180,
-      },
-     })
-    )
+  for(const imagePath of images){
+   const absoluteImagePath = path.resolve(imagePath)
 
-   for(const imagePath of images){
-    const absoluteImagePath = path.resolve(imagePath)
-
-    if(!fs.existsSync(absoluteImagePath)){
-     continue
-    }
-
-    children.push(buildImageParagraph(absoluteImagePath))
+   if(!fs.existsSync(absoluteImagePath)){
+    continue
    }
+
+   children.push(buildImageParagraph(absoluteImagePath))
   }
  }
 

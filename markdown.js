@@ -1,4 +1,5 @@
 import fs from "fs-extra"
+import { getPageHierarchy, sortPagesByUrl } from "./doc-structure.js"
 
 export function generateMarkdown(pages, outputPath = "docs/manual_usuario.md"){
 
@@ -8,49 +9,48 @@ Este documento describe las funcionalidades principales del sistema.
 
 `
 
- const modules={}
+ let currentLevel1 = ""
+ let currentLevel2 = ""
+ let currentLevel3 = ""
 
- for(const p of pages){
+ const sortedPages = sortPagesByUrl(pages)
 
-  const parts = p.url.split("/")
-  const module = parts[3] || "general"
+ sortedPages.forEach((p) => {
+  const hierarchy = getPageHierarchy(p.url)
+  const images = Array.isArray(p.images)
+   ? p.images
+   : (p.image ? [p.image] : [])
+  const description = (p.description || "Acceso a esta seccion del sistema.").trim()
 
-  if(!modules[module]){
-   modules[module]=[]
+  if(hierarchy.level1 !== currentLevel1){
+   md += `\n\n# ${hierarchy.level1}\n`
+   currentLevel1 = hierarchy.level1
+   currentLevel2 = ""
+   currentLevel3 = ""
   }
 
-  modules[module].push(p)
+  if(hierarchy.level2 !== currentLevel2){
+   md += `\n\n## ${hierarchy.level2}\n`
+   currentLevel2 = hierarchy.level2
+   currentLevel3 = ""
+  }
 
- }
+  if(hierarchy.level3 !== currentLevel3){
+   md += `\n\n### ${hierarchy.level3}\n`
+   currentLevel3 = hierarchy.level3
+  }
 
- for(const module in modules){
+  md += `\n\n**URL de referencia:** ${p.url}\n\n${description}\n\n`
 
-  md+=`\n\n# ${module.toUpperCase()}\n`
+  if(hierarchy.extraPath){
+   md += `**Ruta adicional:** ${hierarchy.extraPath}\n\n`
+  }
 
-  modules[module].forEach(p=>{
-
-   const images = Array.isArray(p.images)
-    ? p.images
-    : (p.image ? [p.image] : [])
-
-   const description = (p.description || "Acceso a esta seccion del sistema.").trim()
-
-   md+=`
-
-## ${p.url}
-
-${description}
-
-`
-
-   images.forEach((image, index) => {
-    const imageName = image.split("/").pop()
-    md += `![Pantalla ${index + 1}](./images/${imageName})\n\n`
-   })
-
+  images.forEach((image, index) => {
+   const imageName = image.split("/").pop()
+   md += `![Pantalla ${index + 1}](./images/${imageName})\n\n`
   })
-
- }
+ })
 
  fs.writeFileSync(outputPath,md)
 
